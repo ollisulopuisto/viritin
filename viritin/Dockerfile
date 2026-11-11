@@ -3,13 +3,11 @@ ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-debian:bookworm
 # The add-on's build context is this directory, not the repository root, so the
 # source is fetched rather than copied. Bump VIRITIN_REF in build.yaml to move
 # the add-on to a different revision.
-FROM ${BUILD_FROM} AS builder
+FROM golang:1.26-bookworm AS builder
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates git zip \
-      golang-go \
-      libc6-dev libsqlite3-dev \
  && rm -rf /var/lib/apt/lists/*
 
 ARG VIRITIN_REPO=https://github.com/ollisulopuisto/viritin.git
