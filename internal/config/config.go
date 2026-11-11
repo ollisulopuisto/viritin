@@ -17,7 +17,7 @@ import (
 
 const (
 	AppName         = "Viritin"
-	AppVersion      = "26.11.07.400"
+	AppVersion      = "26.11.11.401"
 	UpstreamVersion = "1.2.6"
 	IniVersion      = "1.2.2"
 	AppCopyright    = "a fork of YTuner " + UpstreamVersion + " by Greg P. (MIT) - https://github.com/ollisulopuisto/viritin"
