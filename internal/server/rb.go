@@ -48,12 +48,28 @@ func (s *Server) avrFor(r *http.Request) (*config.AVR, string) {
 
 var rbKinds = []string{"genre", "country", "language", "popular"}
 
+// rbUID builds the receiver-side id "RB_" + up to 12 uppercased hex digits of a
+// Radio Browser station uuid (dashes dropped), truncated as in the Pascal build.
+// Bolt optimization: a single pass over the uuid into a pre-grown builder
+// replaces strings.ReplaceAll + strings.ToUpper + a string concat (3 allocs)
+// with one allocation, and runs once per station on every listing response.
 func (s *Server) rbUID(st radiobrowser.Station) string {
-	id := strings.ToUpper(strings.ReplaceAll(st.ID, "-", ""))
-	if len(id) > 12 {
-		id = id[:12]
+	var b strings.Builder
+	b.Grow(15) // "RB_" + 12 hex digits
+	b.WriteString("RB_")
+	n := 0
+	for i := 0; i < len(st.ID) && n < 12; i++ {
+		c := st.ID[i]
+		if c == '-' {
+			continue
+		}
+		if c >= 'a' && c <= 'z' {
+			c -= 'a' - 'A'
+		}
+		b.WriteByte(c)
+		n++
 	}
-	return "RB_" + id
+	return b.String()
 }
 
 // rbByID looks a "RB_xxxxxxxxxxxx" id up for the receiver in the request.
