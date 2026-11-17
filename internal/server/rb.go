@@ -5,8 +5,8 @@ import (
 	"net"
 	"net/http"
 	"regexp"
-	"viritin/internal/translator"
 	"strings"
+	"viritin/internal/translator"
 
 	"viritin/internal/config"
 	"viritin/internal/radiobrowser"
@@ -54,6 +54,17 @@ var rbKinds = []string{"genre", "country", "language", "popular"}
 // replaces strings.ReplaceAll + strings.ToUpper + a string concat (3 allocs)
 // with one allocation, and runs once per station on every listing response.
 func (s *Server) rbUID(st radiobrowser.Station) string {
+	// Radio Browser IDs should be ASCII UUIDs. Keep the previous Unicode
+	// mapping for malformed upstream values rather than silently changing IDs.
+	for i := 0; i < len(st.ID); i++ {
+		if st.ID[i] >= 0x80 {
+			id := strings.ToUpper(strings.ReplaceAll(st.ID, "-", ""))
+			if len(id) > 12 {
+				id = id[:12]
+			}
+			return "RB_" + id
+		}
+	}
 	var b strings.Builder
 	b.Grow(15) // "RB_" + 12 hex digits
 	b.WriteString("RB_")

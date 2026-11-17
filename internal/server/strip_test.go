@@ -1,6 +1,7 @@
 package server
 
 import (
+	"strings"
 	"testing"
 
 	"viritin/internal/radiobrowser"
@@ -24,5 +25,18 @@ func TestIndexFoldASCII(t *testing.T) {
 	}
 	if indexFoldASCII("http://a", "https://") != -1 {
 		t.Fatal("found in a plain http url")
+	}
+}
+
+func TestRBUIDMatchesPreviousMapping(t *testing.T) {
+	s := &Server{}
+	for _, id := range []string{"", "a-b-c", "abcdef01-2345-6789-abcd-ef0123456789", "ABCDEF012345", "---------------", "éàö-ß-hello", "12345678901éx", string([]byte{0xff, 'a', '-', 'z'})} {
+		want := strings.ToUpper(strings.ReplaceAll(id, "-", ""))
+		if len(want) > 12 {
+			want = want[:12]
+		}
+		if got := s.rbUID(radiobrowser.Station{ID: id}); got != "RB_"+want {
+			t.Errorf("id %q: got %q want %q", id, got, "RB_"+want)
+		}
 	}
 }
