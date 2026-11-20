@@ -11,6 +11,8 @@ import (
 
 const PathParamDummy = "?viritin=true"
 
+const RM50XMLHeader = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n"
+
 // AddViritinParameter mirrors AddViritinParameter in vtuner.pas.
 func AddViritinParameter(u string) string { return u + PathParamDummy }
 
@@ -60,11 +62,15 @@ func el(b *bytes.Buffer, name, val string) {
 }
 
 func (d Directory) write(b *bytes.Buffer) {
+	d.writeFields(b, AddRetunerParameter(d.Destination))
+}
+
+func (d Directory) writeFields(b *bytes.Buffer, destination string) {
 	b.WriteString("  <Item>\n")
 	el(b, "ItemType", "Dir")
 	el(b, "Title", d.Title)
-	el(b, "UrlDir", AddRetunerParameter(d.Destination))
-	el(b, "UrlDirBackUp", AddRetunerParameter(d.Destination))
+	el(b, "UrlDir", destination)
+	el(b, "UrlDirBackUp", destination)
 	el(b, "DirCount", strconv.Itoa(d.ItemCount))
 	b.WriteString("  </Item>\n")
 }
@@ -84,20 +90,27 @@ func matchMime(m string) string {
 }
 
 func (s Station) write(b *bytes.Buffer) {
-	codec := matchMime(s.Mime)
+	s.writeFields(b, false)
+}
+
+func (s Station) writeFields(b *bytes.Buffer, rm50 bool) {
 	b.WriteString("  <Item>\n")
 	el(b, "ItemType", "Station")
 	el(b, "StationId", s.UID)
 	el(b, "StationName", s.Name)
 	el(b, "StationUrl", s.URL)
 	el(b, "StationDesc", s.Description)
-	el(b, "Logo", s.Icon)
+	if !rm50 {
+		el(b, "Logo", s.Icon)
+	}
 	el(b, "StationFormat", s.Genre)
 	el(b, "StationLocation", s.Location)
 	el(b, "StationBandWidth", s.Bitrate)
-	el(b, "StationMime", codec)
-	el(b, "Relia", "3")
-	el(b, "Bookmark", s.Bookmark)
+	el(b, "StationMime", matchMime(s.Mime))
+	if !rm50 {
+		el(b, "Relia", "3")
+		el(b, "Bookmark", s.Bookmark)
+	}
 	b.WriteString("  </Item>\n")
 }
 
@@ -129,3 +142,37 @@ func (p *Page) XML() string {
 
 // Token is the body of the token handshake.
 func Token(t string) string { return "<EncryptedToken>" + t + "</EncryptedToken>\n" }
+
+// RM50Stations omits the AVR-specific logo, rating and bookmark fields.
+func RM50Stations(total int, stations []Station) string {
+	return rm50List("", total, nil, stations)
+}
+
+// RM50Navigation puts the back link first so the RM50 opens the browse list.
+func RM50Navigation(back string, total int, dirs []Directory, stations []Station) string {
+	return rm50List(back, total+1, dirs, stations)
+}
+
+func rm50List(back string, total int, dirs []Directory, stations []Station) string {
+	var b bytes.Buffer
+	b.WriteString(RM50XMLHeader)
+	b.WriteString("<ListOfItems>\n  <ItemCount>")
+	b.WriteString(strconv.Itoa(total))
+	b.WriteString("</ItemCount>\n")
+	if back != "" {
+		b.WriteString("  <Item>\n")
+		el(&b, "ItemType", "Previous")
+		el(&b, "Title", "Back")
+		el(&b, "UrlPrevious", back)
+		el(&b, "UrlPreviousBackUp", back)
+		b.WriteString("  </Item>\n")
+	}
+	for _, d := range dirs {
+		d.writeFields(&b, d.Destination)
+	}
+	for _, s := range stations {
+		s.writeFields(&b, true)
+	}
+	b.WriteString("</ListOfItems>\n")
+	return b.String()
+}

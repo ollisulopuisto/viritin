@@ -143,6 +143,7 @@ func (s *Server) Handler() http.Handler {
 		path := r.URL.Path
 		lp := strings.ToLower(path)
 		switch {
+		case s.rm50Route(w, r, lp):
 		case strings.HasPrefix(lp, "/setupapp/") && strings.HasSuffix(lp, "/loginxml.asp") && lp != "/setupapp/loginxml.asp":
 			s.login(w, r)
 		case strings.HasPrefix(lp, "/setupapp/") && strings.HasSuffix(lp, "/statxml.asp") && lp != "/setupapp/statxml.asp":
@@ -216,13 +217,7 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
-	// The AVR's entry point is where we learn the address a device really reaches
-	// us from; on a public host that address may then have its lookups forwarded.
-	if s.dns != nil {
-		if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-			s.dns.NoteWebClient(host)
-		}
-	}
+	s.noteWebClient(r)
 	if r.URL.Query().Get("token") == "0" {
 		s.respond(w, http.StatusOK, "application/xml", []byte(vtuner.Token(s.token)))
 		return
@@ -259,6 +254,15 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	// Pascal order follows the avr.ini list; about comes first by default.
 	p.TotalItemsCount = len(p.Items)
 	s.page(w, p)
+}
+
+func (s *Server) noteWebClient(r *http.Request) {
+	// A receiver that reaches the login endpoint can have its DNS lookups forwarded.
+	if s.dns != nil {
+		if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+			s.dns.NoteWebClient(host)
+		}
+	}
 }
 
 // station answers a lookup by id. Ids shorter than three characters, unknown

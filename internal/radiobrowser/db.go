@@ -1,6 +1,7 @@
 package radiobrowser
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"fmt"
@@ -335,6 +336,10 @@ func deleteSection(lines []string, marker string) []string {
 // ensureView (re)creates this receiver's filtered view and drops views left by
 // an earlier version of its ini file (DBRBCheckAVRView).
 func (b *DB) ensureView(mac string, a *config.AVR) (string, error) {
+	return b.ensureViewContext(context.Background(), mac, a)
+}
+
+func (b *DB) ensureViewContext(ctx context.Context, mac string, a *config.AVR) (string, error) {
 	name := viewName(mac, a)
 	if !isSafeSQLIdent(name) {
 		return "", fmt.Errorf("invalid view name")
@@ -342,7 +347,7 @@ func (b *DB) ensureView(mac string, a *config.AVR) (string, error) {
 	if cn, ok := b.views[name]; ok {
 		return cn, nil
 	}
-	rows, err := b.db.Query(script("RBDB_SQL_LIST_VIEWS"))
+	rows, err := b.db.QueryContext(ctx, script("RBDB_SQL_LIST_VIEWS"))
 	if err != nil {
 		return "", err
 	}
@@ -356,7 +361,7 @@ func (b *DB) ensureView(mac string, a *config.AVR) (string, error) {
 	}
 	rows.Close()
 	for _, v := range old {
-		if _, e := b.db.Exec(strings.ReplaceAll(script("RBDB_SQL_DROP_VIEW_AVR"), "@@@AVR", v)); e != nil {
+		if _, e := b.db.ExecContext(ctx, strings.ReplaceAll(script("RBDB_SQL_DROP_VIEW_AVR"), "@@@AVR", v)); e != nil {
 			log.Printf("delete view error: %s", v)
 		}
 	}
@@ -387,10 +392,10 @@ func (b *DB) ensureView(mac string, a *config.AVR) (string, error) {
 	} else {
 		setVar("BitrateMax", []string{strconv.Itoa(a.BitrateMax)})
 	}
-	if _, err := b.db.Exec(text()); err != nil {
+	if _, err := b.db.ExecContext(ctx, text()); err != nil {
 		return "", fmt.Errorf("create view: %w", err)
 	}
-	cn, err := b.confirmedViewName(name)
+	cn, err := b.confirmedViewName(ctx, name)
 	if err != nil {
 		return "", err
 	}
@@ -402,11 +407,11 @@ func (b *DB) ensureView(mac string, a *config.AVR) (string, error) {
 // catalogue and returns the name as SQLite stores it. SELECT statements splice
 // the result into their text because SQLite cannot bind identifiers, so that
 // string must originate from the database itself, never from request input.
-func (b *DB) confirmedViewName(name string) (string, error) {
+func (b *DB) confirmedViewName(ctx context.Context, name string) (string, error) {
 	if !isSafeSQLIdent(name) {
 		return "", fmt.Errorf("invalid view name")
 	}
-	rows, err := b.db.Query(script("RBDB_SQL_LIST_VIEWS"))
+	rows, err := b.db.QueryContext(ctx, script("RBDB_SQL_LIST_VIEWS"))
 	if err != nil {
 		return "", err
 	}
@@ -454,7 +459,11 @@ func (b *DB) Categories(k Kind, a *config.AVR, mac string, start, howMany int) (
 }
 
 func (b *DB) Stations(k Kind, name string, a *config.AVR, mac string, start, howMany int) ([]Station, int) {
-	v, err := b.ensureView(mac, a)
+	return b.stationsContext(context.Background(), k, name, a, mac, start, howMany)
+}
+
+func (b *DB) stationsContext(ctx context.Context, k Kind, name string, a *config.AVR, mac string, start, howMany int) ([]Station, int) {
+	v, err := b.ensureViewContext(ctx, mac, a)
 	if err != nil || !isSafeSQLIdent(v) {
 		log.Printf("Radio-browser database: %v", err)
 		return nil, 0
@@ -486,7 +495,7 @@ func (b *DB) Stations(k Kind, name string, a *config.AVR, mac string, start, how
 	q = strings.ReplaceAll(q, "@@@DirOrder", dir)
 	q = strings.ReplaceAll(q, "@@@Start", strconv.Itoa(start))
 	q = strings.ReplaceAll(q, "@@@Offset", strconv.Itoa(howMany))
-	rows, err := b.db.Query(q, args...)
+	rows, err := b.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		log.Printf("Radio-browser database query error (%v)", err)
 		return nil, 0
@@ -502,6 +511,9 @@ func (b *DB) Stations(k Kind, name string, a *config.AVR, mac string, start, how
 			s.Votes, s.Bitrate, s.Codec = votes.String, bitrate.String, codec.String
 			out = append(out, s)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Radio-browser database query error (%v)", err)
 	}
 	return out, total
 }

@@ -11,16 +11,68 @@ Two things, and only two.
 
 1. **The hostname its firmware asks for** has to be one Viritin can be pointed
    at. That is `InterceptDNs`, or an equivalent override on your own resolver.
-2. **The request path shape** has to be one Viritin serves. There are two, and
-   both are covered:
+2. **The request path and response format** have to match what the firmware
+   expects. For example:
 
    ```
    AVRs               /setupapp/<vendor>/loginxml.asp
    Frontier Silicon   /setupapp/<vendor>/asp/BrowseXML/loginXML.asp
+   Sagem RM50         /setupapp/wistron/asp/browsexpa/loginXML.asp
    ```
 
 Everything else — brand, model year, whether the vendor's own portal is dead or
 merely paywalled — follows from those two.
+
+## Sagem RM50 / 1&1 AudioCenter 2
+
+Point `wistron.vtuner.com` at Viritin on port 80. An existing `*.vtuner.com`
+DNS override already covers this hostname. The RM50's **Sender-Favoritenliste**
+uses Viritin's **My Stations** list when enabled. Name and genre search use
+Radio Browser when enabled. The RM50 sends the same query type for both;
+Viritin includes both name matches and matches for the exact genre tag.
+If one lookup times out, the radio can still list results from the other.
+
+The RM50 lists HTTP streams (MP3 is a good starting point). HTTPS streams
+are only listed if Viritin's HTTPS relay is enabled; the relay port must then
+also be reachable from the radio. An HTTP stream that redirects to HTTPS
+may still be unplayable without a relay.
+
+The Internet Radio request paths and favorites response format are documented in the
+[IP-Phone-Forum device report](https://www.ip-phone-forum.de/threads/1-1-audiocenter-2-sagem-rm50-probleme.274806/post-2603618).
+Favorites, playback of an HTTP MP3 station (N-JOY), name search (NDR), and
+genre search (Alternative) worked on an RM50 with local test builds. The
+region menu lists Radio Browser countries and opens the stations for the
+selected country. Country selection and playback were also tested on the RM50.
+The directory can include countries with no compatible streams. In that case
+the RM50 shows its normal empty-list message. Use Back to pick another country.
+
+The region menu requests `navXML.asp?gofile=LocationLevelTwo`, as also recorded
+in [YCast issue #38](https://github.com/milaq/YCast/issues/38). Non-empty country
+and station lists start with a `Previous` item. Navigation links use
+`wistron.vtuner.com`; links to a numeric IP produced a host error on the radio.
+
+### FM Internet Stations
+
+The **FM Internet Stations** menu keeps its own list. When you select a
+station, the RM50 sends an old numeric vTuner ID to `company.vtuner.com`.
+Point that hostname at Viritin too; a `*.vtuner.com` DNS override covers both.
+The list on the radio does not change. Only stations with a local mapping
+can play. This does not affect FM antenna reception.
+
+Add these tested mappings to `viritin.ini`, or use `advanced_ini` in the
+Home Assistant add-on, then restart Viritin:
+
+```ini
+[RM50FM]
+; 102 FM
+20925=http://cdn88.mediacast.co.il/102-tlv-live/102fm_aac/icecast.audio
+; 77 FM
+27491=http://str0.creacast.com/oxy-meaux
+```
+
+For another station, select it once and look for `RM50 FM: no stream set`
+in the Viritin log. Add the reported ID and a direct HTTP audio URL for that
+station. The URL must not redirect to HTTPS, which the radio cannot play.
 
 ## What DNS says about which brands vTuner provisioned
 

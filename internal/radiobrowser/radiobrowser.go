@@ -9,6 +9,7 @@
 package radiobrowser
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -89,9 +90,13 @@ func New(api, ua string, popLimit, minPerCat int, cacheType string, ttlHours int
 func (c *Client) caching() bool { return c.CacheType != "catNone" && c.CacheType != "" }
 
 func (c *Client) get(path string) []byte {
+	return c.getContext(context.Background(), path)
+}
+
+func (c *Client) getContext(ctx context.Context, path string) []byte {
 	full := c.API + "/json/" + path
 	log.Printf("Radio-browser.info: GET %s", path)
-	req, err := http.NewRequest("GET", full, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, full, nil)
 	var body []byte
 	if err == nil {
 		req.Header.Set("Accept", "application/json")
@@ -461,8 +466,13 @@ func (c *Client) Categories(k Kind, a *config.AVR, mac string, start, howMany in
 // name is the category as it appears in the request path (still URL-encoded) or
 // the search text.
 func (c *Client) Stations(k Kind, name string, a *config.AVR, mac string, start, howMany int) ([]Station, int) {
+	return c.StationsContext(context.Background(), k, name, a, mac, start, howMany)
+}
+
+// StationsContext lists stations and lets the caller limit the query time.
+func (c *Client) StationsContext(ctx context.Context, k Kind, name string, a *config.AVR, mac string, start, howMany int) ([]Station, int) {
 	if c.DB != nil {
-		return c.DB.Stations(k, name, a, mac, start, howMany)
+		return c.DB.stationsContext(ctx, k, name, a, mac, start, howMany)
 	}
 	key := "RBS-" + mac + "-" + strconv.Itoa(int(k)) + "-" + hash(name)
 	var fpath string
@@ -493,7 +503,7 @@ func (c *Client) Stations(k Kind, name string, a *config.AVR, mac string, start,
 		u += "&hidebroken=true"
 	}
 	var all []Station
-	for _, m := range parseArray(c.get(addBulk(u))) {
+	for _, m := range parseArray(c.getContext(ctx, addBulk(u))) {
 		if stationAllowed(m, k, a) {
 			all = append(all, toStation(m))
 		}
