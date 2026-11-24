@@ -104,7 +104,13 @@ func (s *Server) rm50Navigation(w http.ResponseWriter, r *http.Request) {
 		s.rm50Page(w, r, nil)
 		return
 	}
-	body := vtuner.RM50Navigation(back, total, rm50PageItems(q, dirs), rm50PageItems(q, stations))
+	first, last := pageRange(q, total+1)
+	if first > 0 || last < 0 {
+		back = ""
+	}
+	first = max(first-1, 0)
+	last--
+	body := vtuner.RM50Navigation(back, total, rm50ItemsInRange(dirs, first, last), rm50ItemsInRange(stations, first, last))
 	s.respond(w, http.StatusOK, "application/xml", []byte(body))
 }
 
@@ -208,7 +214,11 @@ func (s *Server) rm50Page(w http.ResponseWriter, r *http.Request, list []vtuner.
 
 func rm50PageItems[T any](q url.Values, list []T) []T {
 	first, last := pageRange(q, len(list))
-	if first <= last && last < len(list) {
+	return rm50ItemsInRange(list, first, last)
+}
+
+func rm50ItemsInRange[T any](list []T, first, last int) []T {
+	if first <= last && first < len(list) && last < len(list) {
 		return list[first : last+1]
 	}
 	return nil

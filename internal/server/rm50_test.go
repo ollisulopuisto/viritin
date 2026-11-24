@@ -221,3 +221,66 @@ func TestRM50Navigation(t *testing.T) {
 	}
 	t.Errorf("Denon country link missing: %+v", denon)
 }
+
+func TestRM50NavigationPaging(t *testing.T) {
+	rb := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/json/tags", "/json/languages":
+			_, _ = w.Write([]byte(`[]`))
+		case "/json/countries":
+			_, _ = w.Write([]byte(`[{"name":"Finland","stationcount":2},{"name":"Norway","stationcount":1}]`))
+		case "/json/stations/bycountryexact/Finland":
+			_, _ = w.Write([]byte(`[
+{"stationuuid":"0123456789ab","name":"Alpha","url":"http://example.org/a","lastcheckok":1},
+{"stationuuid":"123456789abc","name":"Bravo","url":"http://example.org/b","lastcheckok":1}]`))
+		default:
+			t.Errorf("unexpected Radio Browser request: %s", r.URL)
+		}
+	}))
+	defer rb.Close()
+	s := newTestServer(t)
+	s.rb = radiobrowser.New(rb.URL, "test", 100, 1, "catNone", 0)
+
+	for _, list := range []struct {
+		name, path, itemType, first, last string
+	}{
+		{"countries", rm50Nav + "?gofile=LocationLevelTwo", "Dir", "Finland", "Norway"},
+		{"stations", rm50Nav + "?gofile=LocationLevelThree&country=Finland", "Station", "Alpha", "Bravo"},
+	} {
+		for _, page := range []struct {
+			name, query  string
+			types, names []string
+		}{
+			{"first", "start=1&howmany=1", []string{"Previous"}, []string{"Back"}},
+			{"middle", "start=2&howmany=1", []string{list.itemType}, []string{list.first}},
+			{"last", "start=3&howmany=1", []string{list.itemType}, []string{list.last}},
+			{"first range", "startitems=1&enditems=2", []string{"Previous", list.itemType}, []string{"Back", list.first}},
+			{"range", "startitems=2&enditems=3", []string{list.itemType, list.itemType}, []string{list.first, list.last}},
+			{"past end", "start=4&howmany=1", nil, nil},
+		} {
+			t.Run(list.name+"/"+page.name, func(t *testing.T) {
+				w := httptest.NewRecorder()
+				s.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, list.path+"&"+page.query, nil))
+				var response struct {
+					ItemCount int
+					Items     []struct{ ItemType, Title, StationName string } `xml:"Item"`
+				}
+				if err := xml.Unmarshal(w.Body.Bytes(), &response); w.Code != http.StatusOK || err != nil {
+					t.Fatalf("status = %d, XML error = %v, body = %s", w.Code, err, w.Body.String())
+				}
+				if response.ItemCount != 3 || len(response.Items) != len(page.types) {
+					t.Fatalf("unexpected page: %+v", response)
+				}
+				for i, item := range response.Items {
+					name := item.Title
+					if item.ItemType == "Station" {
+						name = item.StationName
+					}
+					if item.ItemType != page.types[i] || name != page.names[i] {
+						t.Errorf("item %d = %+v, want %s %q", i, item, page.types[i], page.names[i])
+					}
+				}
+			})
+		}
+	}
+}
